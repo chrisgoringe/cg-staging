@@ -58,6 +58,7 @@ class SaveStaged(io.ComfyNode):
             category       = "staging",
             inputs         = [ 
                 io.String.Input("directory", default="staged"),
+                io.String.Input("active", default="blank for off", tooltip="leave blank to turn saving off"),
                 io.String.Input("fields", default="", tooltip="Autopopulated"),
                 io.Autogrow.Input('data', template=io.Autogrow.TemplatePrefix(io.AnyType.Input('data'), prefix='data', min=0, max=20), optional=True ) 
             ],  
@@ -68,7 +69,8 @@ class SaveStaged(io.ComfyNode):
         )
 
     @classmethod
-    def execute( cls, directory:str, fields:str, data:dict ) -> io.NodeOutput: # type: ignore
+    def execute( cls, directory:str, fields:str, data:dict, active:str="yes" ) -> io.NodeOutput: # type: ignore
+        if not active.strip(): return io.NodeOutput( "", )
         assert len(data)==len(fields), f"Mismatched len(items)=={len(data)} != len(fields)=={len(fields)}"
         payload  = { str(index):Saveables.map_to_tensor(tag, item) for index, (tag, item) in enumerate(zip( fields, [data[k] for k in data] )) if item is not None }
 
@@ -97,7 +99,7 @@ class LoadStaged(io.ComfyNode):
             category="staging",
             description=FIELDS,
             inputs=[
-                io.String.Input("directory", default="staged"),
+                io.String.Input("source", default="staged", tooltip="directory containing files, or path to a file (relative to Comfy root)"),
                 io.String.Input("fields", default="i", tooltip="A series of characters indicating which fields to load, e.g. 'iml' to load image, mask, and latent data. The filename of the saved file must end in _[fields].safetensors"),
                 io.Int.Input("wait", default=0, display_name="wait if none", tooltip=f"Wait for n seconds a file to become available"),
                 io.Boolean.Input("delete", display_name="delete after loading", default=True),
@@ -109,18 +111,28 @@ class LoadStaged(io.ComfyNode):
         )     
 
     @classmethod
-    def execute( cls, directory: str, fields:str, wait: int, delete: bool, pick: str ) -> io.NodeOutput: # type: ignore
-        sts = sorted(cls.get_files(fields, Path(directory), wait))
+    def execute( cls, source: str|Path, fields:str, wait: int, delete: bool, pick: str ) -> io.NodeOutput: # type: ignore
+        source = Path(source)
 
-        st = random.choice(sts) if pick == "random" else sts[0 if pick == "first" else -1]
-        with open(st, 'rb') as fh: d = fh.read()
+        if not source.exists():
+            raise InterruptProcessingException(f"{source} not found")
+        elif source.is_file():
+            if not cls.compatible(fields, source):
+                raise InterruptProcessingException(f"{source} is not a compatible file for fields='{fields}'")
+        elif source.is_dir():
+            sts = sorted(cls.get_files(fields, source, wait))
+            source = random.choice(sts) if pick == "random" else sts[0 if pick == "first" else -1]
+        else:
+            raise InterruptProcessingException(f"{source} exists but isn't a file or directory?")
+
+        with open(source, 'rb') as fh: d = fh.read()
         data = load(d)
         
         outputs = [ Saveables.map_from_tensor(field, data.get(str(i),None)) for i, field in enumerate(fields) ]
 
         if delete: 
-            try: st.unlink()
-            except: print(f"Failed to delete file {st}")
+            try: source.unlink()
+            except: print(f"Failed to delete file {source}")
 
         return io.NodeOutput(*outputs)
     
@@ -129,10 +141,14 @@ class LoadStaged(io.ComfyNode):
         return random.random()
     
     @classmethod
+    def compatible(cls, fields:str, path:Path):
+        return path.stem.endswith(f"_{fields}") and path.suffix==".safetensors"
+    
+    @classmethod
     def get_files(cls, fields:str, dir:Path, max_wait:int) -> list[Path]:
         for _ in range(max_wait if max_wait>0 else 1):
-            files = [ f for f in dir.iterdir() if f.stem.endswith(f"_{fields}") and f.suffix==".safetensors" ]
+            files = [ f for f in dir.iterdir() if cls.compatible(fields, f) ]
             if files: return files
             throw_exception_if_processing_interrupted()
             time.sleep(1)
-        raise InterruptProcessingException()
+        raise InterruptProcessingException(f"Timeout waiting for files matching _{fields} in {dir}")

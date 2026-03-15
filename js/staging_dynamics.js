@@ -1,5 +1,8 @@
 import { app } from "../../scripts/app.js";
 
+// TODO - when reloading, wrong names?
+// TODO give Load Staged a "load file" button which sets the source and the fields
+
 app.registerExtension({
 	name: "cg.customnodes.staging_dynamics",
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
