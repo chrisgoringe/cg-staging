@@ -2,6 +2,15 @@ import { app } from "../../scripts/app.js";
 
 // TODO - when reloading, wrong names?
 // TODO give Load Staged a "load file" button which sets the source and the fields
+/*
+        const uploadWidget = node.addWidget(
+          'button',
+          inputName,
+          '',
+          openFileSelection,
+          { serialize: false, canvasOnly: true }
+        )
+        */
 
 app.registerExtension({
 	name: "cg.customnodes.staging_dynamics",
@@ -11,6 +20,15 @@ app.registerExtension({
             nodeType.prototype.onConnectInput = function (slot) {     
                 if (slot == 1) return false; // the fields widget can't be dynamic
                 return onConnectInput?.apply(this, arguments);
+            }
+            const onConnectionsChange = nodeType.prototype.onConnectionsChange;
+            nodeType.prototype.onConnectionsChange = function (side,slot,connect,link_info,output) { 
+                if (side==2 && connect && !this.outputs[slot].label) {
+                    const input = this.graph.getNodeById(link_info.target_id).inputs[link_info.target_slot]
+                    const label = input.label || input.localized_name || input.name
+                    this.outputs[slot].label = label
+                }
+                onConnectionsChange?.apply(this, arguments)
             }
             nodeType.prototype.isLS = true
         }
