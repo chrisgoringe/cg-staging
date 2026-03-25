@@ -53,3 +53,17 @@ Notes:
 
 Other types might be added, subject to the requirement that they be a Tensor or relatively easy to convert to one. Adding a new type
 requires code in `nodes_staging.py` and `js/staging_dynamics.js`, and I'm happy to get PRs adding them.
+
+## Notes
+
+### Show fields on Save Node
+
+In the settings is an option to show the fields that are currently connected on the save node. Note that you cannot edit these, they must always reflect the actual connections.
+
+### Inputs get reordered
+
+When reloading a workflow, the inputs on `Save Staged` might be reordered. 
+The node saves them in the order of the *names* of the inputs (`data0`, `data1` etc..), which are preserved.
+You can change the displayed name of the slot, the node uses the underlying name which is fixed.
+
+There is an option in the setting which will try to fix the weirdness.

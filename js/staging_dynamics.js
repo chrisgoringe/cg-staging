@@ -14,6 +14,29 @@ import { app } from "../../scripts/app.js";
 
 app.registerExtension({
 	name: "cg.customnodes.staging_dynamics",
+    settings: [
+        {
+            id: "Staging.About",
+            name: `Version 0.1`,
+            type: () => {return document.createElement('span')},
+        },
+        {
+            id: "Staging.ShowFields",
+            name: "Show the fields on the save node",
+            type: "boolean",
+            tooltip: "Show the field list on the Save node",
+            defaultValue: false,
+            onChange: (v) => { app.graph?.nodes?.filter((n)=>(n.isSS)).forEach((node)=>(setVisibility(node, v))) }
+        },
+        {
+            id: "Staging.SortInputs",
+            name: "Fix input weirdness",
+            type: "boolean",
+            tooltip: "Try to fix the weird input reordering Comfy does sometimes",
+            defaultValue: false,
+        },
+    ],
+  
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
         if (nodeType.comfyClass === "Load Staged") {
             const onConnectInput = nodeType.prototype.onConnectInput;
@@ -48,15 +71,31 @@ app.registerExtension({
     },
     async nodeCreated(node) { 
         if (node.isLS) {
-            node.widgets[1].callback = () => {update_outputs(node)}
+            node.widgets.find((widgets)=>(widgets.name=='fields')).callback = () => {update_outputs(node)}
             update_outputs(node)
         }
         if (node.isSS) {
-            node.widgets[node.widgets.length-1].hidden = true 
+            node.widgets.find((widgets)=>(widgets.name=='fields')).callback = () => {
+                if (!allow_fields_set) update_fields_widget(node)
+            }
+            setVisibility(node, app.ui.settings.getSettingValue("Staging.ShowFields"))
+            if (app.ui.settings.getSettingValue("Staging.SortInputs")) setTimeout(sort_inputs, 1000, [node,])
         }
+        
     },
 
 });
+
+function setVisibility(node, v) {
+    node.widgets.find((widgets)=>(widgets.name=='fields')).hidden = !v
+}
+
+var allow_fields_set = false
+function setFields(node, fields) {
+    allow_fields_set = true
+    node.widgets.find((widgets)=>(widgets.name=='fields')).value = fields
+    allow_fields_set = false
+}
 
 /*
 To add a new type, add it here, with a unique key mapping to the Comfy type, and 
@@ -76,18 +115,36 @@ function field_for_type(type) {
     return Object.keys(type_map).find((k)=>(type_map[k]==type))
 }
 
+function sort_inputs(node) {
+    if (!node.inputs) {
+        return
+    }
+    const data_inputs = sorted_data_inputs(node)
+    const unlinked    = unlinked_data_inputs(node)[0]
+    const not_data_inputs = node.inputs.filter((input)=>(input.name.substring(0,9)!="data.data"))
+    if (unlinked) node.inputs = [...data_inputs, unlinked, ...not_data_inputs]
+    else node.inputs = [...data_inputs, ...not_data_inputs]
+}
+
+function sorted_data_inputs(node) {
+    return node.inputs.filter((input)=>(input.name.substring(0,9)=="data.data" && input.link)).sort( (a,b)=> (parseInt(a.name.substring(9)) - parseInt(b.name.substring(9))) )
+}
+
+function unlinked_data_inputs(node) {
+    return node.inputs.filter((input)=>(input.name.substring(0,9)=="data.data" && !input.link)).sort( (a,b)=> (parseInt(a.name.substring(9)) - parseInt(b.name.substring(9))) )
+}
 /*
 When the inputs in the saver are changed, update the fields widget
 */
 function update_fields_widget(node) {
+    const data_in = sorted_data_inputs(node)
     var fields = ""
-    node.inputs.forEach((input)=>{
-        if (input.name.substring(0,4)=="data") {
-            const type = node.graph.links?.[input.link]?.type
-            if (type) fields += field_for_type(type)
-        }
+    data_in.forEach((input)=>{
+        const type = node.graph.links?.[input.link]?.type
+        if (type) fields += field_for_type(type)
     })
-    node.widgets.find((widgets)=>(widgets.name=='fields')).value = fields
+    setFields(node, fields)
+    if (app.ui.settings.getSettingValue("Staging.SortInputs")) sort_inputs(node)
 }
 
 /*
