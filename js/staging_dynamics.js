@@ -53,6 +53,13 @@ app.registerExtension({
                 }
                 onConnectionsChange?.apply(this, arguments)
             }
+            
+            const configure = nodeType.prototype.configure;
+            nodeType.prototype.configure = function () {
+                configure?.apply(this, arguments)
+                update_outputs(this, true)
+            }
+
             nodeType.prototype.isLS = true
         }
         if (nodeType.comfyClass === "Save Staged") {
@@ -72,7 +79,6 @@ app.registerExtension({
     async nodeCreated(node) { 
         if (node.isLS) {
             node.widgets.find((widgets)=>(widgets.name=='fields')).callback = () => {update_outputs(node)}
-            update_outputs(node)
         }
         if (node.isSS) {
             node.widgets.find((widgets)=>(widgets.name=='fields')).callback = () => {
@@ -150,7 +156,7 @@ function update_fields_widget(node) {
 /*
 When the fields widget in the loader is changed, update the outputs
 */
-function update_outputs(node) {
+function update_outputs(node, allow_star) {
     const w = node.widgets?.[1]
     const graph = (node.subgraph || app.graph)
     if (w) {
@@ -160,9 +166,12 @@ function update_outputs(node) {
 
         if (JSON.stringify(types) != JSON.stringify(present)) {
             const removed_links = {}
+            var i = 0
             while (node.outputs.length) { 
                 // save the LLinks
-                const type = node.outputs[0].type
+                var type = node.outputs[0].type
+                if (allow_star && type=='*') type = types[i]
+                i += 1
                 const links = node.outputs[0]?.links?.map((lid)=>graph.links[lid]) || []
                 if (!removed_links[type]) removed_links[type] = []
                 removed_links[type].push(links)
