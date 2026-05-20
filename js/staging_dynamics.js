@@ -86,7 +86,7 @@ app.registerExtension({
         }
         if (node.isSS) {
             node.widgets.find((widgets)=>(widgets.name=='fields')).callback = () => {
-                if (!allow_fields_set) update_fields_widget(node)
+                if (!in_setFields) update_fields_widget(node)
             }
             setVisibility(node, app.ui.settings.getSettingValue("Staging.ShowFields"))
             if (app.ui.settings.getSettingValue("Staging.SortInputs")) setTimeout(sort_inputs, 1000, [node,])
@@ -100,11 +100,11 @@ function setVisibility(node, v) {
     node.widgets.find((widgets)=>(widgets.name=='fields')).hidden = !v
 }
 
-var allow_fields_set = false
+var in_setFields = false
 function setFields(node, fields) {
-    allow_fields_set = true
-    node.widgets.find((widgets)=>(widgets.name=='fields')).value = fields
-    allow_fields_set = false
+    in_setFields = true
+    try { node.widgets.find((widgets)=>(widgets.name=='fields')).value = fields } 
+    finally { in_setFields = false }
 }
 
 /*
