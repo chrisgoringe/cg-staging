@@ -78,7 +78,11 @@ app.registerExtension({
     },
     async nodeCreated(node) { 
         if (node.isLS) {
-            node.widgets.find((widgets)=>(widgets.name=='fields')).callback = () => {update_outputs(node)}
+            const w = node.widgets.find((widgets)=>(widgets.name=='fields'))
+            if (w) {
+                w.callback = () => {update_outputs(node)}
+                update_outputs(node)
+            }
         }
         if (node.isSS) {
             node.widgets.find((widgets)=>(widgets.name=='fields')).callback = () => {
