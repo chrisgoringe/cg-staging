@@ -79,10 +79,7 @@ app.registerExtension({
     async nodeCreated(node) { 
         if (node.isLS) {
             const w = node.widgets.find((widgets)=>(widgets.name=='fields'))
-            if (w) {
-                w.callback = () => {update_outputs(node)}
-                update_outputs(node)
-            }
+            if (w)  w.callback = () => {update_outputs(node)}
         }
         if (node.isSS) {
             node.widgets.find((widgets)=>(widgets.name=='fields')).callback = () => {
@@ -92,6 +89,9 @@ app.registerExtension({
             if (app.ui.settings.getSettingValue("Staging.SortInputs")) setTimeout(sort_inputs, 1000, [node,])
         }
         
+    },
+    afterConfigureGraph() {
+        app.graph.nodes.forEach((node)=>{ if (node.isLS) update_outputs(node) })
     },
 
 });
