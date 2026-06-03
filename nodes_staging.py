@@ -59,6 +59,7 @@ class SaveStaged(io.ComfyNode):
             inputs         = [ 
                 io.String.Input("directory", default="staged"),
                 io.String.Input("active", default="blank for off", tooltip="leave blank to turn saving off"),
+                io.String.Input("metadata", default="", tooltip="for future use"),
                 io.String.Input("fields", default="", tooltip="Autopopulated"),
                 io.Autogrow.Input('data', template=io.Autogrow.TemplatePrefix(io.AnyType.Input('data'), prefix='data', min=0, max=20), optional=True ) 
             ],  
@@ -69,10 +70,13 @@ class SaveStaged(io.ComfyNode):
         )
 
     @classmethod
-    def execute( cls, directory:str, fields:str, data:dict, active:str="yes" ) -> io.NodeOutput: # type: ignore
+    def execute( cls, directory:str, fields:str, data:dict, active:str="yes", metadata:str="" ) -> io.NodeOutput: # type: ignore
         if not active.strip(): return io.NodeOutput( "", )
         assert len(data)==len(fields), f"Mismatched len(items)=={len(data)} != len(fields)=={len(fields)}"
         payload  = { str(index):Saveables.map_to_tensor(tag, item) for index, (tag, item) in enumerate(zip( fields, [data[k] for k in data] )) if item is not None }
+        payload['metadata'] = str_to_tensor( metadata or "(none)" )
+
+        payload = { k:(v.contiguous() if v is not None else v) for k,v in payload.items()  }
 
         filepath = str(cls.savename(Path(directory), fields))
         save_file( payload, filepath )
@@ -106,7 +110,10 @@ class LoadStaged(io.ComfyNode):
                 io.Combo.Input("pick", display_name="pick", options=["first", "random", "last"], default="random"),
             ],
             outputs=[
-                io.AnyType.Output(f"data{i}") for i in range(20)
+                io.String.Output("metadata", display_name="metadata"),
+                io.AnyType.Output("data0"),io.AnyType.Output("data1"),io.AnyType.Output("data2"),
+                io.AnyType.Output("data3"),io.AnyType.Output("data4"),io.AnyType.Output("data5"),
+                io.AnyType.Output("data6"),io.AnyType.Output("data7"),io.AnyType.Output("data8"),
             ]
         )     
 
@@ -129,12 +136,13 @@ class LoadStaged(io.ComfyNode):
         data = load(d)
         
         outputs = [ Saveables.map_from_tensor(field, data.get(str(i),None)) for i, field in enumerate(fields) ]
+        metadata = tensor_to_str( data['metadata'] ) if 'metadata' in data else ""
 
         if delete: 
             try: source.unlink()
             except: print(f"Failed to delete file {source}")
 
-        return io.NodeOutput(*outputs)
+        return io.NodeOutput( metadata, *outputs)
     
     @classmethod
     def fingerprint_inputs(cls, **kwargs):
