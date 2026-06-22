@@ -1,3 +1,5 @@
+import { app } from "../../scripts/app.js";
+
 export function fields_widget(node) { return node.widgets.find((widgets)=>(widgets.name=='fields')) }
 
 /*
@@ -20,4 +22,13 @@ export function field_for_type(type) {
 
 export function type_for_field(field) {
     return type_map[field]
+}
+
+export function log(s, level=2) {
+    const log_level = app.ui.settings.getSettingValue("Staging.log")
+    if (level<=log_level) console.log(s)
+}
+
+export function log_important(s) {
+    log(s,1)
 }

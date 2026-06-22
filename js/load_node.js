@@ -1,5 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { fields_widget, type_for_field } from "./shared.js"
+import { log, log_important } from "./shared.js";
 
 export class LoadNode {
     static before_register(nodeType) {
@@ -21,20 +22,22 @@ export class LoadNode {
         const configure = nodeType.prototype.configure;
         nodeType.prototype.configure = function () {
             configure?.apply(this, arguments)
-            LoadNode.update_outputs(this, true)
+            LoadNode.update_outputs(this, "node.configure", true)
         }
 
-        nodeType.prototype._cg_staging_afterConfigureGraph = function(allow_star) { LoadNode.update_outputs(this, allow_star) }
+        nodeType.prototype._cg_staging_afterConfigureGraph = function(allow_star) { LoadNode.update_outputs(this, "after_configure_graph", allow_star) }
 
         nodeType.prototype.isLS = true
     }
 
     static node_created(node) {
         const w = fields_widget(node)
-        if (w)  w.callback = () => {LoadNode.update_outputs(node)}
+        if (w)  w.callback = () => {LoadNode.update_outputs(node, "fields widget")}
     }
 
-    static update_outputs(node, allow_star) {
+    static update_outputs(node, reason, allow_star) {
+        log(`In update_outputs (${reason}) for ${node.id} with allow_star = ${allow_star}`, 2)
+        if (node._erroring) return
         const w = fields_widget(node)
         const graph = (node.subgraph || app.graph)
         if (w) {
@@ -43,31 +46,56 @@ export class LoadNode {
             const present = node.outputs.slice(1).map( o => o.type )
 
             if (JSON.stringify(types) != JSON.stringify(present)) {
-                const removed_links = {}
+                log(`Types expected ${JSON.stringify(types)} don't match ${JSON.stringify(present)}`,2)
+                const removed_output_links = {}
                 var i = 0
                 while (node.outputs.length>1) { 
                     // save the LLinks
                     var type = node.outputs[1].type
-                    if (allow_star && type=='*') type = types[i]
+                    log(`Output has type ${type}`)
+                    if (allow_star && type=='*') {
+                        type = types[i]
+                        log(`changed type to ${type}`)
+                    }
                     i += 1
-                    const links = node.outputs[1]?.links?.map((lid)=>graph.links[lid]) || []
-                    if (!removed_links[type]) removed_links[type] = []
-                    removed_links[type].push(links)
+                    if (type) {
+                        const links = node.outputs[1]?.links?.map((lid)=>graph.links[lid]) || []
+                        if (!removed_output_links[type]) removed_output_links[type] = []
+                        removed_output_links[type].push(links)
+                        log(`${links.length} links stashed`)
+                    }
+
                     // remove the output
-                    node.removeOutput(1)
+                    try {node.removeOutput(1)}
+                    catch (e) { 
+                        log_important(`Flagging ${node.id} because:`)
+                        console.error(e)
+                        node._erroring = true
+                        return
+                    }
                 }
-                types.forEach( (type) => {
+                types.forEach( (type, i) => {
+                    log(`Adding output ${i+1}`,2)
                     var new_output = node.addOutput(type.toLowerCase(), type)
                     // reconnect
                     try {
-                        const old_links = removed_links[type]?.shift() || []
-                        old_links.forEach((llink)=>{
-                            const target = graph.getNodeById(llink.target_id)
-                            node.connectSlots(new_output, target, target.inputs[llink.target_slot])
-                        })
+                        const old_outputs_for_type = removed_output_links[type]
+                        
+                        if (old_outputs_for_type && old_outputs_for_type.length>0) {
+                            const old_links_to_add = old_outputs_for_type.shift()
+                            console.log(`Adding ${old_links_to_add.length} links`)
+                            old_links_to_add.forEach((llink)=>{
+                                const target = graph.getNodeById(llink.target_id)
+                                const newlink = node.connectSlots(new_output, target, target.inputs[llink.target_slot])
+                                log(`New link id = ${newlink.id}`)
+                            })
+                        }
                     } catch(e) {
                         console.error(e)
                     }
+                })
+                Object.keys(removed_output_links).filter((k)=>(removed_output_links[k].length>0)).forEach((k)=>{
+                    log(`${removed_output_links[k].length} outputs of type ${k} left`)
                 })
                 node.setSize(node.computeSize())
             }
@@ -75,5 +103,3 @@ export class LoadNode {
         }
     }
 }
-
-

@@ -25,6 +25,13 @@ app.registerExtension({
             tooltip: "Try to fix the weird input reordering Comfy does sometimes",
             defaultValue: false,
         },
+        {
+            id: "Staging.log",
+            name: "Log Level",
+            type: "combo",
+            options: [ {value:0, text:"Off"}, {value:1, text:"Normal"}, {value:2, text:"Verbose"}],
+            defaultValue: 1,
+        }
     ],
   
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
